@@ -1,64 +1,85 @@
-import random
 import math
+import random
+import matplotlib.pyplot as plt
+import numpy as np
 
+#CS 5080 Deliverable 2
+#Contributions: distribution base and secretary trial's from Faezeh. Various edits, the "estimator" algorithm and additional plotting
+# by Andy W.
 
-def simulate_candidates(n, dist='uniform', **kwargs):
+# --------------------------------
+# Candidate Generator
+# --------------------------------
+def generate_candidates(n, distribution="uniform"):
     """
-    Simulate the arrival of n candidates with scores drawn from a specified distribution.
-    - dist: 'uniform' (default) or 'normal'
-    - For normal distribution, use kwargs 'mu' (mean, default 0.5) and 'sigma' (std, default 0.15)
-    Returns:
-      candidates: list of candidate scores.
-      best_index: index of the candidate with the highest score.
+    Generate n candidate scores based on the specified distribution.
+    Supported distributions:
+      - "uniform": Uniformly distributed in [0, 1].
+      - "normal": Gaussian with mean 0.5 and std 0.15 (clamped to [0, 1]).
+      - "exponential": Exponentially distributed (order matters).
+      - "beta": Beta distribution with parameters (2, 5).
     """
-    candidates = []
-    if dist == 'uniform':
-        candidates = [random.uniform(0, 1) for _ in range(n)]
-    elif dist == 'normal':
-        mu = kwargs.get('mu', 0.5)
-        sigma = kwargs.get('sigma', 0.15)
-        candidates = [random.gauss(mu, sigma) for _ in range(n)]
+    if distribution == "uniform":
+        return [random.random() for _ in range(n)]
+    elif distribution == "normal":
+        return [min(max(random.gauss(0.5, 0.15), 0), 1) for _ in range(n)]
+    elif distribution == "exponential":
+        return [random.expovariate(1) for _ in range(n)]
+    elif distribution == "beta":
+        return [random.betavariate(2, 5) for _ in range(n)]
     else:
-        raise ValueError("Unsupported distribution type. Use 'uniform' or 'normal'.")
-
-    # Determine the true best candidate (highest score)
-    best_index = max(range(n), key=lambda i: candidates[i])
-    print(f"{best_index}, and: {len(candidates)}, and{max(candidates)}")
-    return candidates, best_index
+        raise ValueError("Unknown distribution specified.")
 
 
-def classical_strategy(candidates, k, estimator_method='max'):
+# --------------------------------
+# Single Trial Simulation with Estimator Evaluation
+# --------------------------------
+def secretary_trial(n, k, distribution="uniform", estimator_method="max"):
     """
-    Implement the classical secretary strategy:
-      - Reject the first k candidates.
-      - Then select the first candidate whose score is higher than all previously seen.
-    Also records the estimator value at each candidate evaluation after the rejection phase.
+    Run one trial of the secretary simulation with a given rejection threshold k.
 
-    estimator_method:
-      'max'       : Use the maximum score seen so far as the estimator.
-      'avg_top3'  : Use the average of the top 3 scores seen so far as the estimator.
+    Parameters:
+      - n: Total number of candidates.
+      - k: Number of candidates to reject in the observation phase.
+      - distribution: Distribution to generate candidate scores.
+
+    Process:
+      1. Generate candidate scores.
+      2. Record the true best candidate and its score.
+      3. In the observation phase (first k candidates), compute observed_max.
+      4. In the selection phase (from k to n-1), select the first candidate with score > observed_max.
+         If none qualify, select the last candidate.
+
+    Also, the estimator here is the observed_max (the best seen in the rejection phase).
 
     Returns:
-      selected_index: index of the candidate selected (or None if no selection made)
-      selected_score: the candidate's score (or None)
-      estimator_values: list of estimator values at each step after the rejection phase.
+      - success (bool): True if the selected candidate is the best overall.
+      - estimator_error (float): Difference (true_best - observed_max).
+      - selected_value (float): The score of the selected candidate.
+      - true_best (float): The maximum candidate score.
     """
-    n = len(candidates)
-    estimator_values = []
 
-    # Use the first k candidates as the rejection phase and determine the threshold
+    candidates = generate_candidates(n, distribution)
+    true_best = max(candidates)
+    best_index = candidates.index(true_best)
+
+    # Observation phase: reject first k candidates
     if k > 0:
-        best_in_reject = max(candidates[:k])
-        # For alternative estimator, keep a list of scores seen so far.
+        observed_max = max(candidates[:k])
         seen_scores = candidates[:k]
     else:
-        best_in_reject = float('-inf')
+        # With k = 0, no observation; set observed_max to a very low value
+        observed_max = -float('inf')
         seen_scores = []
 
-    # Starting from candidate k, evaluate each candidate
+    # Selection phase: select the first candidate exceeding observed_max
+    estimator_values = []
     selected_index = None
-    selected_score = None
+    classic_completed = False
     for i in range(k, n):
+
+        # First updating simple estimator values:
+
         # Update the seen scores (only used for alternative estimator)
         seen_scores.append(candidates[i])
         # Update the estimator based on the chosen method
@@ -71,81 +92,142 @@ def classical_strategy(candidates, k, estimator_method='max'):
         else:
             raise ValueError("Unsupported estimator method. Use 'max' or 'avg_top3'.")
 
+        #print(f"current estimator: {current_estimator}")
         estimator_values.append(current_estimator)
-
-        # Apply the classical selection rule:
-        if candidates[i] > best_in_reject:
+        # next, updating selection for classic algorithm:
+        if candidates[i] > observed_max and not classic_completed:
             selected_index = i
-            selected_score = candidates[i]
-            break  # select the candidate and stop
+            classic_completed = True
+    if selected_index is None:
+        selected_index = n - 1  # if no candidate qualifies, select the last one
 
-    return selected_index, selected_score, estimator_values
+    selected_value = candidates[selected_index]
+    success = (selected_index == best_index)
+    estimator_error = true_best - observed_max  # basic estimator error
+
+    return success, estimator_error, selected_value, true_best, estimator_values
 
 
-def run_trial(n, k, dist='uniform', estimator_method='max', **kwargs):
+# --------------------------------
+# Run Experiment Over a Range of Thresholds
+# --------------------------------
+def run_threshold_experiment(n, trials, distribution="uniform", threshold_percentages=None):
     """
-    Run a single trial of the Secretary Problem.
+    Runs the secretary simulation for a range of rejection thresholds.
+
+    Parameters:
+      - n: Number of candidates.
+      - trials: Number of trials per threshold.
+      - distribution: Distribution to generate candidate scores.
+      - threshold_percentages: List of rejection thresholds (as fraction of n)
+          e.g., [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+
     Returns:
-      candidates: the list of candidate scores.
-      best_index: the index of the true best candidate.
-      selected_index: the index of the candidate selected by the strategy (or None).
-      success: True if the best candidate was selected, else False.
-      estimator_values: the sequence of estimator values recorded after the rejection phase.
+      - thresholds (list): Thresholds in percentage (0 to 100).
+      - success_rates (list): Average success rate for each threshold.
+      - avg_estimation_errors (list): Average estimation error for each threshold.
     """
-    candidates, best_index = simulate_candidates(n, dist, **kwargs)
-    selected_index, selected_score, estimator_values = classical_strategy(candidates, k, estimator_method)
-    success = (selected_index is not None and selected_index == best_index)
-    return candidates, best_index, selected_index, success, estimator_values
+    if threshold_percentages is None:
+        threshold_percentages = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+
+    thresholds = []
+    success_rates = []
+    avg_estimation_errors = []
+    averaged_estimator_alg_curves = []
+    for thresh_frac in threshold_percentages:
+        k = int(n * thresh_frac)
+        successes = []
+        errors = []
+        all_estimator_alg = []
+        for _ in range(trials):
+            success, est_error, _, _, estimator_values = secretary_trial(n, k, distribution)
+            successes.append(success)
+            errors.append(est_error)
+            all_estimator_alg.append(estimator_values)
+        #for an_estimate in all_estimator_alg:
+        #    print(len(an_estimate))
+        averaged_estimator_alg_curves.append(np.average(all_estimator_alg, axis=0))
+        thresholds.append(thresh_frac * 100)
+        success_rates.append(np.mean(successes))
+        avg_estimation_errors.append(np.mean(errors))
+        print(f"Threshold: {thresh_frac * 100:.1f}% (k = {k}), Success Rate: {np.mean(successes):.4f}, Estimation Error: {np.mean(errors):.4f}")
+
+    return thresholds, success_rates, avg_estimation_errors, averaged_estimator_alg_curves
 
 
-def run_simulation(num_trials=1000, n=100, k=None, dist='uniform', estimator_method='max', **kwargs):
-    """
-    Run multiple trials of the Secretary Problem simulation and compute the empirical success rate.
-    - If k is not provided, it is set to round(n/e) (~0.37 * n).
-    Returns:
-      success_rate: proportion of trials where the best candidate was selected.
-      details: list of dictionaries with trial results for further analysis.
-    """
-    if k is None:
-        k = round(n / math.e)
+# --------------------------------
+# Plotting Results
+# --------------------------------
+def plot_results(thresholds, success_rates, avg_estimation_errors, averaged_estimator_alg_curves, threshold_percentages, n, distribution):
+    plt.figure(figsize=(14, 5))
 
-    successes = 0
-    details = []
-    for trial in range(num_trials):
-        candidates, best_index, selected_index, success, estimator_values = run_trial(
-            n, k, dist, estimator_method, **kwargs)
-        if success:
-            successes += 1
-        trial_detail = {
-            "trial": trial,
-            "candidates": candidates,
-            "best_index": best_index,
-            "selected_index": selected_index,
-            "success": success,
-            "estimator_values": estimator_values
-        }
-        details.append(trial_detail)
-    success_rate = successes / num_trials
-    return success_rate, details
+    # Plot success rate vs. threshold
+    plt.subplot(1, 2, 1)
+    plt.plot(thresholds, success_rates, marker='o', linestyle='-')
+    plt.xlabel("Rejection Threshold (% of n)")
+    plt.ylabel("Success Rate")
+    plt.title(f'Success Rate vs. Rejection Threshold for distribution: "{distribution}"')
+    plt.grid(True)
 
+    # Plot estimation error vs. threshold
+    plt.subplot(1, 2, 2)
+    plt.plot(thresholds, avg_estimation_errors, marker='o', linestyle='-', color='red')
+    plt.xlabel("Rejection Threshold (% of n)")
+    plt.ylabel("Average Estimation Error")
+    plt.title(f'Error vs. Rejection Threshold for distribution: "{distribution}"')
+    plt.grid(True)
 
-# Example usage:
+    plt.tight_layout()
+    plt.show()
+
+    main_x = np.arange(1,n + 1)
+    plt.figure()
+    for ix, curve in enumerate(averaged_estimator_alg_curves):
+        plt.plot(main_x[len(main_x) - len(curve):], curve, label=f"Threshold curve for: {threshold_percentages[ix] * 100}%")
+    plt.grid(True)
+    plt.title(f'simple "max" estimations for distribution: "{distribution}"')
+    plt.xlabel(f"Sequence's sample indicies (n = {n})")
+    plt.ylabel("Average Estimator alg value byeond threadhold.")
+    plt.legend()
+    plt.show()
+
+def final_error_plot(all_thresholds, all_secretary_errors, all_n, distribution):
+    for ix, curve in enumerate(all_secretary_errors):
+        plt.plot(all_thresholds[ix], curve, marker='o', label=f"Threshold curve for n = {all_n[ix]}")
+    plt.xlabel("Rejection Threshold (% of n)")
+    plt.ylabel("Average Estimation Error")
+    plt.title(f'Error vs. Rejection TH accross "n" for distribution: "{distribution}"')
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+# --------------------------------
+# Main Execution
+# --------------------------------
 if __name__ == "__main__":
-    # Simulation parameters
-    num_trials = 1000
-    n = 100
-    k = round(n / math.e)  # classical threshold approximately n/e
-    distribution = 'uniform'  # Change to 'normal' for normal distribution
-    estimator_method = 'max'  # Change to 'avg_top3' to use the average of top 3 seen so far
+    all_n = [10, 100, 1000]  # Number of candidates
+    trials = 500  # Number of trials per threshold
+    distribution = "uniform"  # Change this if you want to test other distributions
+    # Define rejection thresholds as percentages (fraction of n)
+    threshold_percentages = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+    all_secretary_errors = []
+    all_thresholds = []
+    for n in all_n:
+        print(f"Trials for samples (n) = {n}:")
+        # Run experiment for a range of thresholds
+        thresholds, success_rates, avg_estimation_errors, averaged_estimator_alg_curves = run_threshold_experiment(n, trials, distribution,
+                                                                                    threshold_percentages)
+        # Plot the results
+        plot_results(thresholds, success_rates, avg_estimation_errors, averaged_estimator_alg_curves, threshold_percentages, n, distribution)
 
-    # Run simulation
-    success_rate, simulation_details = run_simulation(
-        num_trials=num_trials,
-        n=n,
-        k=k,
-        dist=distribution,
-        estimator_method=estimator_method
-    )
+        all_secretary_errors.append(avg_estimation_errors)
+        all_thresholds.append(thresholds)
+        print()
+    final_error_plot(all_thresholds, all_secretary_errors, all_n, distribution)
 
-    print(f"Secretary Problem Simulation ({num_trials} trials, n = {n}, k = {k}):")
-    print(f"Empirical success rate (best candidate selected): {success_rate:.3f}")
+    # Find the threshold that gives the maximum success rate
+    best_index = np.argmax(success_rates)
+    best_threshold = thresholds[best_index]
+    best_success_rate = success_rates[best_index]
+    print(f"\nMaximum success rate is {best_success_rate:.4f} at a rejection threshold of {best_threshold:.2f}% of n.")
