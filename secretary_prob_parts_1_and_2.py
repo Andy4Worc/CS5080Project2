@@ -268,7 +268,7 @@ def plot_of_expected_values(all_secretary_values, all_n, strategies, distributio
 if __name__ == "__main__":
     all_n = [10, 100, 1000]  # Number of candidates
     trials = 500  # Number of trials per threshold
-    distribution = "normal"  # Change this if you want to test other distributions
+    distribution = "beta"  # Change this if you want to test other distributions
     # Define rejection thresholds as percentages (fraction of n)
     threshold_percentages = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
     all_secretary_errors = []
