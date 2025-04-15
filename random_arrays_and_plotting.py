@@ -62,22 +62,22 @@ def generate_data(distribution, size, **params):
     elif distribution == 'sorted':
         # Generating a nearly sorted array: sort a uniform array then perturb it slightly.
         arr = np.sort(np.random.uniform(0, 100, size))
-        perturb = np.random.uniform(-0.5, 0.5, size)
-        return arr + perturb
+        #perturb = np.random.uniform(-0.5, 0.5, size)
+        return arr #+ perturb
     else:
         raise ValueError("Unknown distribution")
 
 # Function to measure quicksort runtime using NumPy's quicksort.
-def measure_quicksort_time(arr):
+def measure_quicksort_time(arr, pivot_func):
     start = time.perf_counter()
     # Using NumPy's sort with the quicksort algorithm.
     #_ = np.sort(arr, kind='quicksort')
-    _ = quicksort(arr, first_element_pivot)
+    _ = quicksort(arr, pivot_func)
     end = time.perf_counter()
     return end - start
 
 # Run experiments for each distribution and input size, averaging over multiple trials.
-def run_experiments(distributions, sizes, trials):
+def run_experiments(distributions, sizes, trials, pivot_func):
     results = []
     for dist in distributions:
         for size in sizes:
@@ -95,7 +95,7 @@ def run_experiments(distributions, sizes, trials):
                 else:
                     arr = generate_data('uniform', size)
                 # Measure the quicksort runtime.
-                time_taken = measure_quicksort_time(arr)
+                time_taken = measure_quicksort_time(arr, pivot_func)
                 times.append(time_taken)
             avg_time = np.mean(times)
             results.append({
@@ -108,20 +108,21 @@ def run_experiments(distributions, sizes, trials):
 
 # Define experiment parameters.
 distributions = ['uniform', 'normal', 'exponential', 'sorted']
-sizes = [100, 500, 1000, 5000] # [12500, 25000, 50000, 100000]  # You can adjust the sizes based on your needs.
+sizes = [50, 120, 250, 600] # [12500, 25000, 50000, 100000]  # You can adjust the sizes based on your needs.
 trials = 10  # Number of trials to average the timing.
 
 # Run the experiments.
-df_results = run_experiments(distributions, sizes, trials)
+pivot_func = first_element_pivot
+df_results = run_experiments(distributions, sizes, trials, pivot_func)
 
 # Step 8: Visualize the results using matplotlib.
 plt.figure(figsize=(10, 6))
 for dist in distributions:
     df_subset = df_results[df_results['Distribution'] == dist]
-    plt.plot(df_subset['Size'], df_subset['AverageTime'], marker='o', label=dist)
-plt.xlabel("Input Size")
-plt.ylabel("Average Quicksort Time (seconds)")
-plt.title("Quicksort Performance Across Different Distributions")
+    plt.plot(df_subset['Size'], df_subset['AverageTime']*1000, marker='o', label=dist)
+plt.xlabel("Input Size (n)")
+plt.ylabel("Average Quicksort Time (ms)")
+plt.title(f"Quicksort Performance Across Distributions for: '{pivot_func.__name__}'")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()

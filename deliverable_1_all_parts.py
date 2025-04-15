@@ -94,11 +94,30 @@ def run_theoretical_experiment(n_vals, noise_levels, trials=10):
 
                 trial_runtimes.append(end_time - start_time)
             run_times_for_a_noise.append(np.mean(trial_runtimes))
-        print(f"completing theoretical computation for noise level: {noise}%")
+        print(f"completing 'first-pivot' theoretical computation for noise level: {noise * 100}%")
         run_times_for_each_noise_level.append(run_times_for_a_noise)
-    return run_times_for_each_noise_level
 
+    run_times_for_each_noise_level_good_pivot = []
+    for noise in noise_levels:
+        run_times_for_a_noise = []
+        for n_val in n_vals:
+            trial_runtimes = []
+            for _ in range(trials):
+                sorted_arr = generate_sorted_array(n_val)
+                test_arr = perturb_array(sorted_arr, noise)
 
+                start_time = time.perf_counter()
+                _, _, current_max_depth, current_avg_balance = quicksort(
+                    test_arr, pivot_strategy="median_of_three"
+                )
+                end_time = time.perf_counter()
+
+                trial_runtimes.append(end_time - start_time)
+            run_times_for_a_noise.append(np.mean(trial_runtimes))
+        print(f"completing 'median-of-three-pivot' theoretical computation for noise level: {noise * 100}%")
+        run_times_for_each_noise_level_good_pivot.append(run_times_for_a_noise)
+
+    return run_times_for_each_noise_level, run_times_for_each_noise_level_good_pivot
 
 # ===============================
 # Step 4: Plot the Results
@@ -136,8 +155,8 @@ def plot_results(results):
 # ===============================
 # Step 5: Plot the Theoretical comparison results
 # ===============================
-def plot_theoretical(run_times_for_each_noise_level, noise_levels, n_vals_for_sims, early_n):
-    plt.figure()
+def plot_theoretical(run_times_for_each_noise_level, run_times_for_each_noise_level_good_pivot, noise_levels, n_vals_for_sims, early_n):
+
 
     all_x = np.arange(1, n_vals_for_sims[-1] + 1)
     n_logn_data = all_x * np.log(all_x)
@@ -150,15 +169,30 @@ def plot_theoretical(run_times_for_each_noise_level, noise_levels, n_vals_for_si
     n_log_n_adjustment = n_logn_data[early_n] / run_times_for_each_noise_level[-1][early_n_index]
     n_squared_adjustment = n_squared_data[early_n] / run_times_for_each_noise_level[0][early_n_index]
 
+    plt.figure()
     plt.plot(all_x, n_logn_data / n_log_n_adjustment, label="O(n*log(n))")
     plt.plot(all_x, n_squared_data / n_squared_adjustment, label="O(n^2)")
     plt.xlabel("Samples (n)")
     plt.ylabel("Average Runtime (s)")
     plt.yscale("log")
-    plt.title("Nearly-Sorted Runtime to Theoertical Comparison")
+    plt.title("Nearly-Sorted Runtime vs Theoretical: 'first_pivot'")
     plt.grid(True)
     for ix, a_noise_runtime_curve in enumerate(run_times_for_each_noise_level):
-        plt.plot(n_vals_for_sims, a_noise_runtime_curve, marker='o', linestyle="--", label=f"result for noise level {noise_levels[ix]}%")
+        plt.plot(n_vals_for_sims, a_noise_runtime_curve, marker='o', linestyle="--", label=f"result for noise level {noise_levels[ix] * 100}%")
+    plt.legend()
+    plt.show()
+
+    #Showing with a "good" pivot: median_of_3:
+    plt.figure()
+    plt.plot(all_x, n_logn_data / n_log_n_adjustment, label="O(n*log(n))")
+    plt.plot(all_x, n_squared_data / n_squared_adjustment, label="O(n^2)")
+    plt.xlabel("Samples (n)")
+    plt.ylabel("Average Runtime (s)")
+    plt.yscale("log")
+    plt.title("Nearly-Sorted Runtime vs Theoretical: 'median_of_3_pivot'")
+    plt.grid(True)
+    for ix, a_noise_runtime_curve in enumerate(run_times_for_each_noise_level_good_pivot):
+        plt.plot(n_vals_for_sims, a_noise_runtime_curve, marker='o', linestyle="--", label=f"result for noise level {noise_levels[ix] * 100}%")
     plt.legend()
     plt.show()
 
@@ -171,13 +205,13 @@ if __name__ == "__main__":
     noise_levels = [0.0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0]
     trials = 10
 
-    #results = run_experiment(n, noise_levels, trials)
-    #plot_results(results)
+    results = run_experiment(n, noise_levels, trials)
+    plot_results(results)
 
     # theoretical analysis:
 
     n_vals = [50, 100, 200, 400, 800, 1600, 3200]
     early_n = n_vals[0]
-    run_times_for_each_noise_level = run_theoretical_experiment(n_vals, noise_levels, trials)
+    run_times_for_each_noise_level, run_times_for_each_noise_level_good_pivot = run_theoretical_experiment(n_vals, noise_levels, trials)
 
-    plot_theoretical(run_times_for_each_noise_level, noise_levels, n_vals, early_n)
+    plot_theoretical(run_times_for_each_noise_level, run_times_for_each_noise_level_good_pivot, noise_levels, n_vals, early_n)

@@ -273,7 +273,7 @@ if __name__ == "__main__":
     threshold_percentages = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
     all_secretary_errors = []
     all_thresholds = []
-    """
+
     for n in all_n:
         print(f"Trials for samples (n) = {n}:")
         # Run experiment for a range of thresholds
@@ -293,7 +293,7 @@ if __name__ == "__main__":
     best_success_rate = success_rates[best_index]
     print(f"\nMaximum success rate is {best_success_rate:.4f} at a rejection threshold of {best_threshold:.2f}% of n.")
     
-    """
+
     all_n = [10, 60, 360, 2000]  # Number of candidates
     strategies = ["37%", "avg_top3", "90_of_10", "x_div_ln_x"]
     all_vals = []
